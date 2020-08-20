@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>GeoInsighter</title>
+<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+<script src="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.css" rel="stylesheet" />
+<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.5.1/mapbox-gl-geocoder.min.js"></script>
+<link
+rel="stylesheet"
+href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.5.1/mapbox-gl-geocoder.css"
+type="text/css"
+/>
+<style>
+	body { margin: 0; padding: 0; }
+	#map { position: absolute; top: 0; bottom: 0; width: 100%; }
+</style>
+</head>
+<body>
+        <style type="text/css">
+            #info {
+            display: block;
+            position: absolute;
+            bottom: 15px;
+            right:25px;
+            width: 25%;
+            padding: 10px;
+            border: none;
+            border-radius: 3px;
+            font-size: 12px;
+            text-align: center;
+            color:blue;
+            background:rgb(221, 230, 230);
+            }
+            #menu {
+            position: absolute;
+            background: #fff;
+            padding: 10px;
+            font-family: 'Open Sans', sans-serif;
+            }
+            .distance-container {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1;
+            }
+            
+            .distance-container > * {
+            background-color: rgba(0, 0, 0, 0.5);
+            color: #fff;
+            font-size: 11px;
+            line-height: 18px;
+            display: block;
+            margin: 0;
+            padding: 5px 10px;
+            border-radius: 3px;
+            }
+            .calculation-box {
+            height: 75px;
+            width: 150px;
+            position: absolute;
+            bottom: 40px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            text-align: center;
+            }
+            
+            p {
+            font-family: 'Open Sans';
+            margin: 0;
+            font-size: 13px;
+            }
+            </style>
+        <div id="map"></div>
+
+        <div id="distance" class="distance-container"></div>
+        <div class="calculation-box">
+            <p>Draw a polygon using the draw tools.</p>
+            <div id="calculated-area"></div>
+        </div>
+        <script src="https://npmcdn.com/@turf/turf@5.1.6/turf.min.js"></script>
+        <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.2.0/mapbox-gl-draw.js"></script>
+        <link rel="stylesheet"href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.2.0/mapbox-gl-draw.css"type="text/css"/>
+        <pre id="info"></pre>
+        <div id="menu">
+       
+<script>
+	mapboxgl.accessToken = 'pk.eyJ1Ijoicm9udmljIiwiYSI6ImNqeGVwcjdsdTBuNnUzem56Y3U3OTRtMnYifQ.-YmiEQoGWCEQkPuLEM9QyQ';
+   
+    var map = new mapboxgl.Map({
+        container: 'map', // container id
+        style: 'mapbox://styles/ronvic/ckdh24lt30sbl1iqz998ze67v', // style URL
+        center: [83.3813, 26.7599], // starting position [lng, lat]
+        zoom: 14 ,// starting zoom
+        rotation : -20,
+        pitch:30
+    }); 
+
+    
+
+    //geolocate control
+    map.addControl(new mapboxgl.GeolocateControl({
+    positionOptions: {
+        enableHighAccuracy: true
+    },
+    trackUserLocation: true
+}));
+
+    //geocoder control
+    map.addControl(
+    new MapboxGeocoder({
+    accessToken: mapboxgl.accessToken,
+    mapboxgl: mapboxgl
+    })
+    );
+
+    // get lat long on mouse position
+    map.on('mousemove', function(e) {
+    document.getElementById('info').innerHTML =
+    // e.point is the x, y coordinates of the mousemove event relative
+    // to the top-left corner of the map
+    JSON.stringify(e.point) +
+    '<br />' +
+    // e.lngLat is the longitude, latitude geographical position of the event
+    JSON.stringify(e.lngLat.wrap());
+    });
+
+
+    //scale bar
+    var scale = new mapboxgl.ScaleControl({
+    maxWidth: 80,
+    unit: 'imperial'
+    });
+    map.addControl(scale);
+
+    scale.setUnit('metric');
+
+    //navigation control
+    map.addControl(new mapboxgl.NavigationControl());
+
+    var distanceContainer = document.getElementById('distance');
+ 
+        // GeoJSON object to hold our measurement features
+        var geojson = {
+        'type': 'FeatureCollection',
+        'features': []
+        };
+        
+        // Used to draw a line between points
+        var linestring = {
+        'type': 'Feature',
+        'geometry': {
+        'type': 'LineString',
+        'coordinates': []
+        }
+        };
+        
+        map.on('load', function() {
+        map.addSource('geojson', {
+        'type': 'geojson',
+        'data': geojson
+        });
+        
+        // Add styles to the map
+        map.addLayer({
+        id: 'measure-points',
+        type: 'circle',
+        source: 'geojson',
+        paint: {
+        'circle-radius': 5,
+        'circle-color': '#000'
+        },
+        filter: ['in', '$type', 'Point']
+        });
+        map.addLayer({
+        id: 'measure-lines',
+        type: 'line',
+        source: 'geojson',
+        layout: {
+        'line-cap': 'round',
+        'line-join': 'round'
+        },
+        paint: {
+        'line-color': '#000',
+        'line-width': 2.5
+        },
+        filter: ['in', '$type', 'LineString']
+        });
+        
+        map.on('click', function(e) {
+        var features = map.queryRenderedFeatures(e.point, {
+        layers: ['measure-points']
+        });
+        
+        // Remove the linestring from the group
+        // So we can redraw it based on the points collection
+        if (geojson.features.length > 1) geojson.features.pop();
+        
+        // Clear the Distance container to populate it with a new value
+        distanceContainer.innerHTML = '';
+        
+        // If a feature was clicked, remove it from the map
+        if (features.length) {
+        var id = features[0].properties.id;
+        geojson.features = geojson.features.filter(function(point) {
+        return point.properties.id !== id;
+        });
+        } else {
+        var point = {
+        'type': 'Feature',
+        'geometry': {
+        'type': 'Point',
+        'coordinates': [e.lngLat.lng, e.lngLat.lat]
+        },
+        'properties': {
+        'id': String(new Date().getTime())
+        }
+        };
+        
+        geojson.features.push(point);
+        }
+        
+        if (geojson.features.length > 1) {
+        linestring.geometry.coordinates = geojson.features.map(function(
+        point
+        ) {
+        return point.geometry.coordinates;
+        });
+        
+        geojson.features.push(linestring);
+        
+        // Populate the distanceContainer with total distance
+        var value = document.createElement('pre');
+        value.textContent =
+        'Total distance: ' +
+        turf.length(linestring).toLocaleString() +
+        'km';
+        distanceContainer.appendChild(value);
+        }
+        
+        map.getSource('geojson').setData(geojson);
+        });
+        });
+        
+        map.on('mousemove', function(e) {
+        var features = map.queryRenderedFeatures(e.point, {
+        layers: ['measure-points']
+        });
+        // UI indicator for clicking/hovering a point on the map
+        map.getCanvas().style.cursor = features.length
+        ? 'pointer'
+        : 'crosshair';
+        });
+        
+        // calculate area of polygon 
+        
+        var draw = new MapboxDraw({
+        displayControlsDefault: false,
+        controls: {
+        polygon: true,
+        trash: true
+        }
+        });
+        map.addControl(draw);
+        
+        map.on('draw.create', updateArea);
+        map.on('draw.delete', updateArea);
+        map.on('draw.update', updateArea);
+        
+        function updateArea(e) {
+        var data = draw.getAll();
+        var answer = document.getElementById('calculated-area');
+        if (data.features.length > 0) {
+        var area = turf.area(data);
+        // restrict to area to 2 decimal points
+        var rounded_area = Math.round(area * 100) / 100;
+        answer.innerHTML =
+        '<p><strong>' +
+        rounded_area +
+        '</strong></p><p>square meters</p>';
+        } else {
+        answer.innerHTML = '';
+        if (e.type !== 'draw.delete')
+        alert('Use the draw tools to draw a polygon!');
+        }
+        }
+
+</script>
+
+</body>
+</html>
